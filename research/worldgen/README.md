@@ -6,7 +6,7 @@ Where the "terrain" for a Valheim 1.0 world comes from, worked out from the 1.0.
 | What | Where it lives | Status |
 |---|---|---|
 | **Biomes** | Not saved: computed from the seed by `WorldGenerator.GetBiome(x, z)` | `biome.py` ports it; matches all 12,286 saved locations (100%) |
-| **Base terrain height** | Not saved: `GetBiomeHeight` per biome, plus rivers and lakes from `Pregenerate()` | `base_height` ported (drives ocean/mountain); full heights not yet |
+| **Base terrain height** | Not saved: `GetBiomeHeight` per biome, plus rivers and lakes from `Pregenerate()` | Ported in `WorldGenerator.cs` (rivers, no streams on the map); the map paints water below 30 m |
 | **Player terrain edits** | `_TerrainCompiler` objects (TerrainComp) in the `.chunk` files: per-zone height/paint deltas | Not read yet |
 | **Explored zones** | `_main.N.db2` → ZoneSystem: every 64 m zone ever generated | Read in Python |
 | **Locations** (bosses, trader, dungeons, villages) | `_main.N.db2` → ZoneSystem: prefab hash + position for each | Read in Python; names via the Jötunn location list |

@@ -65,12 +65,12 @@ public sealed record ZoneData(IReadOnlyList<(short X, short Z)> ExploredZones, I
 
 // Checks the biome generator against a save: every location may only be placed in certain biomes,
 // so the share that land in an allowed biome says whether this game version still generates biomes
-// the way BiomeGenerator does. 1.0.17 scores 100%.
+// the way WorldGenerator does. 1.0.17 scores 100%.
 public static class LocationCheck
 {
     static readonly Lazy<Dictionary<int, Biome>> AllowedByHash = new(Load);
 
-    public static (int Checked, int Matched) Run(BiomeGenerator biomes, IEnumerable<ZoneData.Location> locations)
+    public static (int Checked, int Matched) Run(WorldGenerator biomes, IEnumerable<ZoneData.Location> locations)
     {
         int checkedCount = 0, matched = 0;
         foreach (var l in locations)

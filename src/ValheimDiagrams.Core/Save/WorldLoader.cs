@@ -51,7 +51,7 @@ public sealed class LoadedWorld
     public int ChunkFiles { get; init; }
     public int ObjectsRead { get; init; }
 
-    // How many of the save's locations sit in a biome they're allowed in, by BiomeGenerator:
+    // How many of the save's locations sit in a biome they're allowed in, by WorldGenerator:
     // all of them if the generator still matches the game.
     public int BiomeCheckLocations { get; init; }
     public int BiomeCheckMatched { get; init; }
@@ -104,7 +104,7 @@ public static class WorldLoader
         if (pause is not null) await pause();
         var zones = save.Latest("db2") is { } db2 ? ZoneData.Read(save.Open(db2)) : null;
         var (checkedLocations, matched) = zones is null ? (0, 0)
-            : LocationCheck.Run(new BiomeGenerator(meta.Seed, meta.WorldGenVersion), zones.Locations);
+            : LocationCheck.Run(new WorldGenerator(meta.Seed, meta.WorldGenVersion), zones.Locations);
 
         return new LoadedWorld
         {

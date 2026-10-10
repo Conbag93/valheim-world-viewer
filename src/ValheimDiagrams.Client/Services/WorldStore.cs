@@ -24,7 +24,7 @@ public sealed class WorldStore(IJSRuntime js) : IAsyncDisposable
         public List<SavedViewDto> Views { get; } = views;
         public List<BuildDto> Builds { get; } = BuildFinder.Find([.. world.Pieces.Select(p =>
             new BuildFinder.Piece(p.X, p.Y, p.Z, PieceCatalog.Get(world.Prefabs[p.PrefabIndex]).DisplayName))]);
-        public TerrainRenderer Terrain { get; } = new(new BiomeGenerator(world.Meta.Seed, world.Meta.WorldGenVersion), world.Explored);
+        public TerrainRenderer Terrain { get; } = new(new WorldGenerator(world.Meta.Seed, world.Meta.WorldGenVersion), world.Explored);
         public Dictionary<int, HashSet<(int X, int Y)>> TerrainIndex { get; } = [];
         public Dictionary<(int, int, int), string?> TileUrls { get; } = [];
         public bool StaleTilesRemoved { get; set; }

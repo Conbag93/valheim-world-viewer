@@ -9,7 +9,7 @@
    changing zoom never flashes empty while finer tiles are still being drawn. *@
 <g class="terrain" opacity="@F(Opacity)" pointer-events="none">
     @* Unexplored ground: fog over the world's disc, under the explored tiles. *@
-    <circle class="fog" cx="0" cy="0" r="@F(BiomeGenerator.WorldRadius)" />
+    <circle class="fog" cx="0" cy="0" r="@F(WorldGenerator.WorldRadius)" />
     @foreach (var level in Levels)
     {
         var size = TerrainRenderer.TileMetres(level);

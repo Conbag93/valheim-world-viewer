@@ -27,7 +27,13 @@ public sealed class WorldStore(IJSRuntime js) : IAsyncDisposable
         public TerrainRenderer Terrain { get; } = new(new BiomeGenerator(world.Meta.Seed, world.Meta.WorldGenVersion), world.Explored);
         public Dictionary<int, HashSet<(int X, int Y)>> TerrainIndex { get; } = [];
         public Dictionary<(int, int, int), string?> TileUrls { get; } = [];
+        public bool StaleTilesRemoved { get; set; }
     }
+
+    // The demo world, shipped with the site in wwwroot/demo-world (made by tools/MakeDemo) and opened under
+    // this name. It's never stored as one of the visitor's worlds, but its views and tiles are kept as
+    // theirs are.
+    public const string DemoKey = "(demo)";
 
     async Task<IJSObjectReference> Module() =>
         _module ??= await js.InvokeAsync<IJSObjectReference>("import", "./js/world-store.js");
@@ -38,10 +44,16 @@ public sealed class WorldStore(IJSRuntime js) : IAsyncDisposable
     {
         var m = await Module();
         var json = await m.InvokeAsync<string[]>("values", "summaries");
-        return [.. json.Select(j => JsonSerializer.Deserialize(j, StoreJson.Default.StoredSummary)!)
+        return [.. json.Select(j => JsonSerializer.Deserialize(j, SnapshotJson.Default.StoredSummary)!)
             .OrderBy(s => s.WorldName, StringComparer.OrdinalIgnoreCase)
             .Select(s => ToDto(s, null))];
     }
+
+    // The demo's summary, or null if this site has no demo.
+    public async Task<WorldDto?> GetDemoAsync() =>
+        await (await Module()).InvokeAsync<string?>("fetchText", "demo-world/summary.json") is { } json
+            ? ToDto(JsonSerializer.Deserialize(json, SnapshotJson.Default.StoredSummary)!, null)
+            : null;
 
     public async Task<WorldDto?> GetWorldAsync(string name) =>
         await Open(name) is { } w ? ToDto(w.Summary, w) : null;
@@ -89,14 +101,13 @@ public sealed class WorldStore(IJSRuntime js) : IAsyncDisposable
 
         // The metadata file's modified time is when the game last saved the world.
         var saved = files.Where(f => f.Name == save.Latest("fwl2")).Select(f => f.LastModified.UtcDateTime).FirstOrDefault();
-        var summary = new StoredSummary(world.Meta.WorldName, world.Meta.SeedName, world.Pieces.Count, saved, DateTime.UtcNow,
-            world.Explored.Count > 0, world.BiomeCheckLocations, world.BiomeCheckMatched);
+        var summary = StoredSummary.Of(world, saved, DateTime.UtcNow);
 
         progress?.Report(new LoadProgress(1, 1, "Saving in the browser"));
         var m = await Module();
         await m.InvokeVoidAsync("removePrefix", "tiles", summary.WorldName + "|");
-        await m.InvokeVoidAsync("put", "worlds", summary.WorldName, JsonSerializer.Serialize(StoredWorld.From(world), StoreJson.Default.StoredWorld));
-        await m.InvokeVoidAsync("put", "summaries", summary.WorldName, JsonSerializer.Serialize(summary, StoreJson.Default.StoredSummary));
+        await m.InvokeVoidAsync("put", "worlds", summary.WorldName, JsonSerializer.Serialize(StoredWorld.From(world), SnapshotJson.Default.StoredWorld));
+        await m.InvokeVoidAsync("put", "summaries", summary.WorldName, JsonSerializer.Serialize(summary, SnapshotJson.Default.StoredSummary));
 
         _open[summary.WorldName] = new OpenWorld(summary, world, await LoadViews(summary.WorldName));
         return new ImportResultDto(0, world.Meta.WorldName, world.ChunkFiles, world.ObjectsRead, world.Pieces.Count, []);
@@ -106,11 +117,12 @@ public sealed class WorldStore(IJSRuntime js) : IAsyncDisposable
     {
         if (_open.TryGetValue(name, out var open)) return open;
         var m = await Module();
-        var summaryJson = await m.InvokeAsync<string?>("get", "summaries", name);
-        var worldJson = await m.InvokeAsync<string?>("get", "worlds", name);
+        var (summaryJson, worldJson) = name == DemoKey
+            ? (await m.InvokeAsync<string?>("fetchText", "demo-world/summary.json"), await m.InvokeAsync<string?>("fetchText", "demo-world/world.json"))
+            : (await m.InvokeAsync<string?>("get", "summaries", name), await m.InvokeAsync<string?>("get", "worlds", name));
         if (summaryJson is null || worldJson is null) return null;
-        var summary = JsonSerializer.Deserialize(summaryJson, StoreJson.Default.StoredSummary)!;
-        var world = JsonSerializer.Deserialize(worldJson, StoreJson.Default.StoredWorld)!.ToLoadedWorld();
+        var summary = JsonSerializer.Deserialize(summaryJson, SnapshotJson.Default.StoredSummary)!;
+        var world = JsonSerializer.Deserialize(worldJson, SnapshotJson.Default.StoredWorld)!.ToLoadedWorld();
         return _open[name] = new OpenWorld(summary, world, await LoadViews(name));
     }
 
@@ -159,8 +171,15 @@ public sealed class WorldStore(IJSRuntime js) : IAsyncDisposable
     {
         if (!_open.TryGetValue(world, out var w)) return null;
         if (w.TileUrls.TryGetValue((level, tx, ty), out var url)) return url;
-        var key = $"{world}|{w.Summary.ImportedUtc.Ticks}|{level}|{tx}|{ty}";
+        // Tiles are kept per import and renderer version; older ones are cleared out once.
+        var prefix = $"{world}|{w.Summary.ImportedUtc.Ticks}|v{TerrainRenderer.Version}|";
         var m = await Module();
+        if (!w.StaleTilesRemoved)
+        {
+            w.StaleTilesRemoved = true;
+            await m.InvokeVoidAsync("removeStale", "tiles", world + "|", prefix);
+        }
+        var key = $"{prefix}{level}|{tx}|{ty}";
         url = await m.InvokeAsync<string?>("storedTileUrl", key);
         if (url is null && w.Terrain.Draw(level, tx, ty) is { } rgba)
             url = await m.InvokeAsync<string>("tileUrl", key, rgba, TerrainRenderer.TileSize);
@@ -185,63 +204,6 @@ public sealed class WorldStore(IJSRuntime js) : IAsyncDisposable
     }
 }
 
-public sealed record StoredSummary(string WorldName, string SeedName, int PieceCount, DateTime SavedUtc, DateTime ImportedUtc,
-    bool HasTerrain, int BiomeCheckLocations, int BiomeCheckMatched);
-
-// A LoadedWorld as stored in IndexedDB: pieces as parallel arrays to keep the JSON compact.
-public sealed class StoredWorld
-{
-    public int Format { get; set; } = 1;
-    public required WorldMeta Meta { get; set; }
-    public required string[] Prefabs { get; set; }
-    public required int[] PrefabIndex { get; set; }
-    public required float[] X { get; set; }
-    public required float[] Y { get; set; }
-    public required float[] Z { get; set; }
-    public required float[] RotY { get; set; }
-    public required int[] Explored { get; set; }
-    public required string[] GlobalKeys { get; set; }
-    public int ChunkFiles { get; set; }
-    public int ObjectsRead { get; set; }
-    public int BiomeCheckLocations { get; set; }
-    public int BiomeCheckMatched { get; set; }
-    public int UnknownPrefabs { get; set; }
-
-    public static StoredWorld From(LoadedWorld w) => new()
-    {
-        Meta = w.Meta,
-        Prefabs = [.. w.Prefabs],
-        PrefabIndex = [.. w.Pieces.Select(p => p.PrefabIndex)],
-        X = [.. w.Pieces.Select(p => p.X)],
-        Y = [.. w.Pieces.Select(p => p.Y)],
-        Z = [.. w.Pieces.Select(p => p.Z)],
-        RotY = [.. w.Pieces.Select(p => p.RotY)],
-        Explored = [.. w.Explored.SelectMany(z => new[] { z.X, z.Z })],
-        GlobalKeys = [.. w.GlobalKeys],
-        ChunkFiles = w.ChunkFiles,
-        ObjectsRead = w.ObjectsRead,
-        BiomeCheckLocations = w.BiomeCheckLocations,
-        BiomeCheckMatched = w.BiomeCheckMatched,
-        UnknownPrefabs = w.UnknownPrefabs,
-    };
-
-    public LoadedWorld ToLoadedWorld() => new()
-    {
-        Meta = Meta,
-        Prefabs = Prefabs,
-        Pieces = [.. Enumerable.Range(0, PrefabIndex.Length).Select(i => new WorldPiece(i + 1, PrefabIndex[i], X[i], Y[i], Z[i], RotY[i]))],
-        Explored = Enumerable.Range(0, Explored.Length / 2).Select(i => (Explored[2 * i], Explored[2 * i + 1])).ToHashSet(),
-        GlobalKeys = GlobalKeys,
-        ChunkFiles = ChunkFiles,
-        ObjectsRead = ObjectsRead,
-        BiomeCheckLocations = BiomeCheckLocations,
-        BiomeCheckMatched = BiomeCheckMatched,
-        UnknownPrefabs = UnknownPrefabs,
-    };
-}
-
 // Source-generated so it survives trimming in the published (AOT) app.
-[JsonSerializable(typeof(StoredWorld))]
-[JsonSerializable(typeof(StoredSummary))]
 [JsonSerializable(typeof(List<SavedViewDto>))]
 internal partial class StoreJson : JsonSerializerContext;

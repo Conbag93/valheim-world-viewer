@@ -44,36 +44,70 @@
         </section>
     }
 
-    <section class="open">
-        <h2>@(_worlds.Count == 0 ? "Open a world" : "Open another world")</h2>
+    <div class="start">
+        <section class="open">
+            <h2>@(_worlds.Count == 0 ? "Open a world" : "Open another world")</h2>
 
-        <div class="upload">
-            <label class="picker @(_busy ? "busy" : null)">
-                <InputFile OnChange="Import" multiple webkitdirectory disabled="@_busy" />
-                <span>@(_progress is { } p ? $"{p.Step}… {(p.Total > 0 ? 100 * p.Done / p.Total : 0)}%" : "Choose a world folder…")</span>
-            </label>
-            <p class="hint">
-                Pick the folder named after the world. It's inside <code>worlds_local</code> and holds <code>.chunk</code> files and <code>_main.*</code> files.
-                Only Valheim 1.0 saves can be read. To import a newer save of the same world, pick its folder again.
-            </p>
-            <dl class="where">
-                <dt>Windows</dt><dd><code>%USERPROFILE%\AppData\LocalLow\IronGate\Valheim\worlds_local</code> (paste it into the picker's address bar)</dd>
-                <dt>Linux / Steam Deck</dt><dd><code>~/.config/unity3d/IronGate/Valheim/worlds_local</code></dd>
-                <dt>macOS</dt><dd><code>~/Library/Application Support/IronGate/Valheim/worlds_local</code></dd>
-                <dt>Dedicated server</dt><dd>its <code>worlds_local</code> folder; copy the world's folder to your computer first</dd>
-            </dl>
-        </div>
-    </section>
+            <div class="upload">
+                <label class="picker @(_busy ? "busy" : null)">
+                    <InputFile OnChange="Import" multiple webkitdirectory disabled="@_busy" />
+                    <span>@(_progress is { } p ? $"{p.Step}… {(p.Total > 0 ? 100 * p.Done / p.Total : 0)}%" : "Choose a world folder…")</span>
+                </label>
+                <p class="hint">
+                    Pick the folder named after the world. It's inside <code>worlds_local</code> and holds <code>.chunk</code> files and <code>_main.*</code> files.
+                    Only Valheim 1.0 saves can be read. To import a newer save of the same world, pick its folder again.
+                </p>
+                <dl class="where">
+                    <dt>Windows</dt><dd><code>%USERPROFILE%\AppData\LocalLow\IronGate\Valheim\worlds_local</code> (paste it into the picker's address bar)</dd>
+                    <dt>Linux / Steam Deck</dt><dd><code>~/.config/unity3d/IronGate/Valheim/worlds_local</code></dd>
+                    <dt>macOS</dt><dd><code>~/Library/Application Support/IronGate/Valheim/worlds_local</code></dd>
+                    <dt>Dedicated server</dt><dd>its <code>worlds_local</code> folder; copy the world's folder to your computer first</dd>
+                </dl>
+            </div>
+        </section>
+
+        @if (_demo is { } d)
+        {
+            <section class="demo">
+                <h2>See a demo</h2>
+                <p>No save to hand? Look around a world from a real server.</p>
+                <ul class="worlds">
+                    <li>
+                        <a class="world" href="demo">
+                            <span class="name">@d.WorldName</span>
+                            <span class="meta">
+                                @d.PieceCount.ToString("N0") player-built pieces
+                                @if (!string.IsNullOrEmpty(d.SeedName)) { <text> · seed <code>@d.SeedName</code></text> }
+                            </span>
+                            <span class="meta">Saved @Local(d.SavedUtc)</span>
+                        </a>
+                    </li>
+                </ul>
+            </section>
+        }
+    </div>
 </div>
 
 @code {
     IReadOnlyList<WorldDto> _worlds = [];
+    WorldDto? _demo;
     bool _busy;
     LoadProgress? _progress;
     string? _message;
     bool _failed;
 
-    protected override async Task OnInitializedAsync() => await Refresh();
+    protected override async Task OnInitializedAsync()
+    {
+        await Refresh();
+        try
+        {
+            _demo = await Store.GetDemoAsync();
+        }
+        catch
+        {
+            // No demo, then; opening your own world still works.
+        }
+    }
 
     async Task Refresh()
     {

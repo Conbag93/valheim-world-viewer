@@ -16,3 +16,4 @@ A top-down viewer for Valheim 1.0 worlds: a static Blazor WebAssembly site (no s
 - **Check for an orphaned app process.** Stopping the watcher can leave the app itself running and holding port 5216. Look for it with `ss -ltnp | grep 5216`.
 - **Testing imports in Playwright:** click the folder input, then `browser_file_upload` with the world folder's path; Playwright fills the `webkitdirectory` input with its files.
 - **Test saves** go in `world/` (gitignored), e.g. via `scripts/fetch-world.sh <ssh-host> <WorldName>`.
+- **The demo world** (`/demo`, linked from the landing page) is `src/ValheimDiagrams.Client/wwwroot/demo-world/*.json`, made with `scripts/make-demo.sh <world folder>`. It holds only what an import keeps (piece names and positions, explored zones, seed), not the raw save.

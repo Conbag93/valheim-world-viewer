@@ -13,6 +13,7 @@
     --grid-minor: rgba(11, 11, 11, 0.06);
     --grid-major: rgba(11, 11, 11, 0.12);
     --select: #2a78d6;
+    --fog: #3a3f46;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -29,6 +30,7 @@
         --grid-minor: rgba(255, 255, 255, 0.05);
         --grid-major: rgba(255, 255, 255, 0.1);
         --select: #6da7ec;
+        --fog: #2a2e34;
     }
 }
 

@@ -1,6 +1,10 @@
 @page "/world/{Name}"
 @page "/world/{Name}/build/{BuildIndex:int}"
 @page "/world/{Name}/view/{ViewId:int}"
+@page "/demo"
+@page "/demo/build/{BuildIndex:int}"
+@page "/demo/view/{ViewId:int}"
+@using ValheimDiagrams.Core
 @using ValheimDiagrams.Shared
 @using ValheimDiagrams.Client.Components
 @using ValheimDiagrams.Client.Services
@@ -14,7 +18,7 @@
     <AppNav />
     <header>
         <div>
-            <h1>@(_world?.WorldName ?? "World") <span class="sub">@Place</span></h1>
+            <h1>@(_world?.WorldName ?? "World") <span class="sub">@Place</span>@if (IsDemo) { <span class="badge">Demo</span> }</h1>
             @if (_world is { } w)
             {
                 <p>
@@ -27,7 +31,7 @@
                     }
                     else if (_builds.Count > 0)
                     {
-                        <text>Pick a build, or zoom in and load what's in view.</text>
+                        <text>Zoom in to see the pieces, or click a build to open it.</text>
                     }
                 </p>
             }
@@ -110,32 +114,34 @@
         }
         else if (_world is null)
         {
-            <p class="status">There's no world called “@Name” in this browser. <a href="">Back to your worlds</a> to open it.</p>
+            <p class="status">
+                @if (IsDemo) { <text>There's no demo world on this site.</text> }
+                else { <text>There's no world called “@Name” in this browser.</text> }
+                <a href="">Back to your worlds</a> to open it.
+            </p>
         }
         else if (_world.PieceCount == 0)
         {
             <p class="status">Nothing has been built in @_world.WorldName yet.</p>
         }
-        else if (_window is not null)
+        else if ((_window?.Diagram ?? _overview) is { } diagram)
         {
-            <DiagramViewer @ref="_viewer" Diagram="_window.Diagram" FitKey="_fitKey" Slice="CurrentSlice" OnDepthStep="Step" Underlay="TerrainUnderlay" />
-        }
-        else if (_overview is not null)
-        {
-            <DiagramViewer @ref="_viewer" Diagram="_overview" FitKey="_fitKey" Underlay="TerrainUnderlay">
-                <SelectionActions Context="e">
-                    <button class="primary" @onclick="() => OpenBuild(e.Id)">Open build #@e.Id</button>
-                </SelectionActions>
-            </DiagramViewer>
+            @* One viewer for both, so swapping the overview's boxes for pieces keeps the pan and zoom. *@
+            <DiagramViewer @ref="_viewer" Diagram="diagram" FitKey="_fitKey" OnViewChanged="ViewChanged" Underlay="TerrainUnderlay" Legend="TerrainLegend" LegendTitle="Biomes"
+                           Slice="@(_window is null ? null : CurrentSlice)" OnDepthStep="Step" OnOpen="@(_window is null ? e => OpenBuild(e.Id) : null)" />
         }
     </main>
 </div>
 
 @code {
-    [Parameter] public string Name { get; set; } = "";
+    // Null on the demo's addresses (the router clears parameters a route doesn't have).
+    [Parameter] public string? Name { get; set; }
 
-    // The world's address segment.
-    string Here => $"world/{Uri.EscapeDataString(Name)}";
+    bool IsDemo => Name is null;
+
+    // The world as WorldStore knows it, and its address.
+    string Key => Name ?? WorldStore.DemoKey;
+    string Here => IsDemo ? "demo" : $"world/{Uri.EscapeDataString(Name!)}";
     [Parameter] public int? BuildIndex { get; set; }
     [Parameter] public int? ViewId { get; set; }
 
@@ -143,8 +149,22 @@
     bool _showTerrain = true;
 
     RenderFragment<ViewInfo>? TerrainUnderlay => _showTerrain && _world is { HasTerrain: true }
-        ? view => @<TerrainLayer WorldName="@Name" View="view.Visible" Scale="view.Scale" />
+        ? view => @<TerrainLayer WorldName="@Key" View="view.Visible" Scale="view.Scale" />
         : null;
+
+    // The biome map's key, in roughly the order you meet them.
+    static readonly (string Name, string Colour)[] BiomeLegend =
+    [
+        .. new (Biome Biome, string Name)[]
+        {
+            (Biome.Meadows, "Meadows"), (Biome.BlackForest, "Black Forest"), (Biome.Swamp, "Swamp"),
+            (Biome.Mountain, "Mountain"), (Biome.Plains, "Plains"), (Biome.Mistlands, "Mistlands"),
+            (Biome.AshLands, "Ashlands"), (Biome.DeepNorth, "Deep North"), (Biome.Ocean, "Ocean"),
+        }.Select(b => (b.Name, $"#{TerrainRenderer.Colours[b.Biome]:X6}")),
+        ("Unexplored", "var(--fog)"),
+    ];
+
+    IReadOnlyList<(string Name, string Colour)>? TerrainLegend => TerrainUnderlay is null ? null : BiomeLegend;
 
     string BiomeCheckTitle => _world is { BiomeCheckLocations: > 0 } w
         ? $"Biomes are worked out from the seed. Check: {w.BiomeCheckMatched:N0} of {w.BiomeCheckLocations:N0} of the save's locations are in a biome they're allowed in."
@@ -153,6 +173,8 @@
     // The dropdown lists this many of the largest builds; the overview shows them all.
     const int MaxListedBuilds = 25;
 
+    // The Key _world was loaded for.
+    string? _key;
     WorldDto? _world;
     IReadOnlyList<BuildDto> _builds = [];
     DiagramDto? _overview;
@@ -182,10 +204,11 @@
         {
             _loading = true;
             _error = null;
-            if (_world?.WorldName != Name)
+            if (_key != Key)
             {
-                (_world, _build, _view, _window, _overview) = (await Store.GetWorldAsync(Name), null, null, null, null);
-                _builds = _world is null ? [] : await Store.GetBuildsAsync(Name);
+                _key = Key;
+                (_world, _build, _view, _window, _overview) = (await Store.GetWorldAsync(Key), null, null, null, null);
+                _builds = _world is null ? [] : await Store.GetBuildsAsync(Key);
                 _overview = _builds.Count > 0 ? Overview(_builds) : null;
             }
             if (_world is null) return;
@@ -240,18 +263,18 @@
             var note = $"Build #{b.Index}: {Pieces(b.PieceCount)}, mostly {string.Join(", ", b.CommonPieces)}. Heights {b.MinY:0}–{b.MaxY:0} m."
                 + (b.Interior ? " Inside a dungeon: the game places interiors about 5 km above their entrance." : "");
             // Colours chosen to stand out against every biome on the terrain map.
-            var colour = layer switch { 1 => "#E11D74", 3 => "#7F3FBF", _ => "#2B2B2B" };
+            var colour = layer switch { 101 => "#E11D74", 103 => "#7F3FBF", _ => "#2B2B2B" };
             return new ElementDto(b.Index, layer, ElementKind.Rect, [new Point2(cx - w / 2, cz - h / 2)], w, h, 0, null, note, null,
                 new ElementStyle(colour, 0, colour, 0.9, CornerRadius: 4));
         }
-        var large = builds.Where(b => !b.Interior && b.PieceCount >= SmallBuild).Select(b => Rect(b, 1)).ToList();
-        var small = builds.Where(b => !b.Interior && b.PieceCount < SmallBuild).Select(b => Rect(b, 2)).ToList();
-        var interior = builds.Where(b => b.Interior).Select(b => Rect(b, 3)).ToList();
+        var large = builds.Where(b => !b.Interior && b.PieceCount >= SmallBuild).Select(b => Rect(b, 101)).ToList();
+        var small = builds.Where(b => !b.Interior && b.PieceCount < SmallBuild).Select(b => Rect(b, 102)).ToList();
+        var interior = builds.Where(b => b.Interior).Select(b => Rect(b, 103)).ToList();
         return new DiagramDto(0, "Overview", null, 1,
         [
-            new LayerDto(2, "Smaller builds", 0, true, "#2B2B2B", LegendSwatch.Fill, small),
-            new LayerDto(1, $"Builds of {SmallBuild}+ pieces", 1, true, "#E11D74", LegendSwatch.Fill, large),
-            new LayerDto(3, "Inside dungeons", 2, true, "#7F3FBF", LegendSwatch.Fill, interior),
+            new LayerDto(102, "Smaller builds", 0, true, "#2B2B2B", LegendSwatch.Fill, small),
+            new LayerDto(101, $"Builds of {SmallBuild}+ pieces", 1, true, "#E11D74", LegendSwatch.Fill, large),
+            new LayerDto(103, "Inside dungeons", 2, true, "#7F3FBF", LegendSwatch.Fill, interior),
         ], []);
     }
 
@@ -281,16 +304,22 @@
     // Bumped per load, so a slow response can't overwrite a newer one (e.g. switching quickly).
     int _loadSeq;
 
-    async Task LoadWindow(AreaDto area, bool interior = false)
+    // keepCeiling leaves the ceiling where the reader put it (loading more while panning around).
+    async Task LoadWindow(AreaDto area, bool interior = false, bool keepCeiling = false)
     {
         if (_world is null) return;
         var seq = ++_loadSeq;
-        var window = await Store.GetWindowAsync(Name, area, interior);
+        var window = await Store.GetWindowAsync(Key, area, interior);
         if (seq != _loadSeq) return;
-        _window = window;
+        (_window, _loadedArea, _loadedInterior) = (window, area, interior);
         var heights = _window?.Diagram.Layers.SelectMany(l => l.Elements).Select(e => e.Elevation).OfType<double>().ToList() ?? [];
         var previous = _range;
         _range = heights.Count > 0 ? (Math.Floor(heights.Min() * 10) / 10, Math.Ceiling(heights.Max()) + 1) : null;
+        if (keepCeiling && previous is not null)
+        {
+            _range = _range is (var l, var h) ? (Math.Min(l, _ceiling), Math.Max(h, _ceiling)) : (_ceiling, _ceiling);
+            return;
+        }
 
         // Keep the ceiling where the reader left it if it still makes sense here; otherwise
         // start at the top of the storey with the most floor tiles (usually the main floor).
@@ -298,6 +327,57 @@
         if (_window is { Levels.Count: > 0 } w)
             _ceiling = StoreyTops()[w.Levels.MaxBy(l => l.Floors)!.Index];
         else if (_range is (_, var top)) _ceiling = top;
+    }
+
+    // What the current window was loaded for, so panning past it can load more.
+    AreaDto? _loadedArea;
+    bool _loadedInterior;
+    CancellationTokenSource? _settle;
+
+    // Zoomed in to this or closer, the pieces themselves are drawn; further out, the overview's
+    // box per build (too many pieces to draw, and too small to see).
+    const double PiecesMaxSpan = 1500;
+
+    // Once panning or zooming settles: zoomed in with part of the view outside what's loaded, loads
+    // the view and half its size again on each side, so short pans after that don't load anything.
+    // Zoomed out from pieces (unless a build or view is open), goes back to the boxes.
+    void ViewChanged(Bounds b)
+    {
+        var zoomedOut = Math.Max(b.MaxX - b.MinX, b.MaxY - b.MinY) > PiecesMaxSpan;
+        var pinned = _build is not null || _view is not null;
+        if (zoomedOut && (_window is null || pinned)) return;
+        if (!zoomedOut && _window is not null && _loadedArea is { } a
+            && b.MinX >= a.MinX && b.MaxX <= a.MaxX && b.MinY >= a.MinZ && b.MaxY <= a.MaxZ) return;
+        _settle?.Cancel();
+        var settle = _settle = new CancellationTokenSource();
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(250, settle.Token);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+            if (_viewer?.VisibleArea is not { } v || _overview is null) return;
+            var (w, h) = ((v.MaxX - v.MinX) / 2, (v.MaxY - v.MinY) / 2);
+            if (Math.Max(w, h) * 2 > PiecesMaxSpan)
+            {
+                if (_build is not null || _view is not null) return;
+                (_window, _range) = (null, null);
+                _loadSeq++;
+            }
+            else if (_window is not null)
+                await LoadWindow(new AreaDto(v.MinX - w, v.MaxX + w, v.MinY - h, v.MaxY + h), _loadedInterior, keepCeiling: true);
+            else
+            {
+                // From the overview, which may span builds at very different heights: no ceiling cut.
+                await LoadWindow(new AreaDto(v.MinX - w, v.MaxX + w, v.MinY - h, v.MaxY + h));
+                if (_range is (_, var top)) _ceiling = top;
+            }
+            StateHasChanged();
+        });
     }
 
     // Loads everything inside the area on screen; the view stays where it is.
@@ -322,7 +402,7 @@
         if (_world is null || _viewer?.VisibleArea is not { } b || string.IsNullOrWhiteSpace(_newName)) return;
         await Run(async () =>
         {
-            var saved = await Store.SaveViewAsync(Name, _newName!, new AreaDto(b.MinX, b.MaxX, b.MinY, b.MaxY));
+            var saved = await Store.SaveViewAsync(Key, _newName!, new AreaDto(b.MinX, b.MaxX, b.MinY, b.MaxY));
             await ReloadWorld();
             _naming = false;
             _newName = null;
@@ -337,7 +417,7 @@
         if (_view is not { } v) return;
         await Run(async () =>
         {
-            await Store.DeleteViewAsync(Name, v.Id);
+            await Store.DeleteViewAsync(Key, v.Id);
             await ReloadWorld();
             _naming = false;
             _view = null;
@@ -346,7 +426,7 @@
         });
     }
 
-    async Task ReloadWorld() => _world = await Store.GetWorldAsync(Name) ?? _world;
+    async Task ReloadWorld() => _world = await Store.GetWorldAsync(Key) ?? _world;
 
     async Task Run(Func<Task> action)
     {

@@ -5,9 +5,11 @@
 @inject WorldStore Store
 
 @* Biome map tiles under the shapes, drawn in the browser from the world's seed. Only tiles with
-   explored ground exist; the rest stays blank. A coarse layer is always drawn underneath, so
+   explored ground exist; the rest is fog. A coarse layer is always drawn underneath, so
    changing zoom never flashes empty while finer tiles are still being drawn. *@
 <g class="terrain" opacity="@F(Opacity)" pointer-events="none">
+    @* Unexplored ground: fog over the world's disc, under the explored tiles. *@
+    <circle class="fog" cx="0" cy="0" r="@F(BiomeGenerator.WorldRadius)" />
     @foreach (var level in Levels)
     {
         var size = TerrainRenderer.TileMetres(level);
@@ -27,7 +29,7 @@
     [Parameter, EditorRequired] public string WorldName { get; set; } = "";
     [Parameter, EditorRequired] public Bounds View { get; set; }
     [Parameter, EditorRequired] public double Scale { get; set; }
-    [Parameter] public double Opacity { get; set; } = 0.7;
+    [Parameter] public double Opacity { get; set; } = 1;
 
     const int BackdropLevel = 5;
 

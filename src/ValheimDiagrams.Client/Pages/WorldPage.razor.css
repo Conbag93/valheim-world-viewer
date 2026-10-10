@@ -219,6 +219,17 @@ h1 .sub {
     color: var(--text-secondary);
 }
 
+.badge {
+    margin-left: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--select);
+    color: var(--select);
+    font-size: 12px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
 main ::deep button.primary {
     width: 100%;
     background: var(--select);

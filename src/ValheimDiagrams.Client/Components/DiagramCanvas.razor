@@ -85,6 +85,10 @@
     // Content under everything else, given the current view (re-rendered on every pan and zoom).
     [Parameter] public RenderFragment<ViewInfo>? Underlay { get; set; }
 
+    // Told the visible area after every pan, zoom or resize. A plain delegate rather than an
+    // EventCallback, so the owner isn't re-rendered on each step of a drag.
+    [Parameter] public Action<Bounds>? OnViewChanged { get; set; }
+
     ElementReference _svg;
     ElementReference _cursorReadout;
     IJSInProcessObjectReference? _module;
@@ -162,6 +166,7 @@
     {
         _view.Resize(width, height);
         StateHasChanged();
+        OnViewChanged?.Invoke(VisibleArea);
     }
 
     // Leave room around the content for the compass letters.
@@ -172,6 +177,7 @@
     {
         _view.PanBy(dx, dy);
         StateHasChanged();
+        OnViewChanged?.Invoke(VisibleArea);
     }
 
     [JSInvokable]
@@ -182,6 +188,7 @@
     {
         _view.ZoomAt(offsetX, offsetY, factor);
         StateHasChanged();
+        OnViewChanged?.Invoke(VisibleArea);
     }
 
     // Called synchronously from JS, so these return void and let the callbacks run on.

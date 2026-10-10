@@ -105,3 +105,7 @@
 .readout span:empty {
     display: none;
 }
+
+.canvas ::deep .terrain .fog {
+    fill: var(--fog);
+}

@@ -2,8 +2,8 @@
 @using ValheimDiagrams.Client.Diagrams
 
 <div class="viewer">
-    <DiagramCanvas @ref="_canvas" Diagram="Diagram" FitKey="FitKey" Slice="Slice" OnDepthStep="OnDepthStep" Underlay="Underlay" HiddenLayers="_hidden" HighlightLayer="_highlight"
-                   @bind-Selected="_selected" OnHover="e => _hovered = e" />
+    <DiagramCanvas @ref="_canvas" Diagram="Diagram" FitKey="FitKey" Slice="Slice" OnDepthStep="OnDepthStep" Underlay="Underlay" OnViewChanged="OnViewChanged" HiddenLayers="_hidden" HighlightLayer="_highlight"
+                   Selected="_selected" SelectedChanged="Select" OnHover="e => _hovered = e" />
 
     <aside class="sidebar">
         <section>
@@ -23,6 +23,19 @@
                 }
             </ul>
         </section>
+
+        @if (Legend is { Count: > 0 })
+        {
+            <section>
+                <h3>@LegendTitle</h3>
+                <ul class="legend">
+                    @foreach (var (name, colour) in Legend)
+                    {
+                        <li><span class="swatch fill" style="--c: @colour"></span>@name</li>
+                    }
+                </ul>
+            </section>
+        }
 
         <section class="details">
             <h3>@(_hovered is not null ? "Hover" : "Selection")</h3>
@@ -84,6 +97,20 @@
     [Parameter] public EventCallback<int> OnDepthStep { get; set; }
 
     [Parameter] public RenderFragment<ViewInfo>? Underlay { get; set; }
+    [Parameter] public Action<Bounds>? OnViewChanged { get; set; }
+
+    // A key to what's drawn under the shapes (e.g. biome colours): name and CSS colour.
+    [Parameter] public IReadOnlyList<(string Name, string Colour)>? Legend { get; set; }
+    [Parameter] public string LegendTitle { get; set; } = "Legend";
+
+    // Called when a shape is clicked (e.g. to open what it stands for), besides selecting it.
+    [Parameter] public Action<ElementDto>? OnOpen { get; set; }
+
+    void Select(ElementDto? e)
+    {
+        _selected = e;
+        if (e is not null) OnOpen?.Invoke(e);
+    }
 
     // Shown under the details of the selected shape, e.g. a button to open it.
     [Parameter] public RenderFragment<ElementDto>? SelectionActions { get; set; }

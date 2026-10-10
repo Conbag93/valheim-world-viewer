@@ -36,6 +36,24 @@ export const values = store => run(store, 'readonly', s => s.getAll());
 export const removePrefix = (store, prefix) =>
     run(store, 'readwrite', s => s.delete(IDBKeyRange.bound(prefix, prefix + '￿'))).then(() => undefined);
 
+// Deletes a world's stored tiles that aren't under keep: ones drawn by an older renderer or import.
+export const removeStale = (store, prefix, keep) =>
+    run(store, 'readwrite', s => {
+        const request = s.openCursor(IDBKeyRange.bound(prefix, prefix + '\uffff'));
+        request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor) return;
+            if (!cursor.key.startsWith(keep)) cursor.delete();
+            cursor.continue();
+        };
+        return request;
+    }).then(() => undefined);
+
+// A JSON file shipped with the site (the demo world), or null if there isn't one; a server that answers
+// every path with index.html doesn't count. Revalidated each time, so an updated demo is picked up.
+export const fetchText = url => fetch(url, { cache: 'no-cache' }).then(
+    r => r.ok && r.headers.get('content-type')?.includes('json') ? r.text() : null, () => null);
+
 // Terrain tiles: RGBA pixels from .NET become a PNG blob (stored for next time) and an object URL.
 const urls = new Map();
 

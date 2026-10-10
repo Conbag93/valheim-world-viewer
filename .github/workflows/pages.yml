@@ -1,10 +1,10 @@
 # Builds the viewer (AOT-compiled WebAssembly) and publishes it to GitHub Pages.
+# Run by hand (Actions → Deploy to GitHub Pages → Run workflow, or `gh workflow run pages.yml`):
+# the AOT build takes a few minutes, so pushes don't publish.
 # It's a static site: saves are read in each visitor's browser, nothing is uploaded anywhere.
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

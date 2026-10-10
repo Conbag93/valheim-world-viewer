@@ -25,8 +25,8 @@ Saves from before Valheim 1.0 (a flat `.fwl` + `.db` pair) can't be read; loadin
 
 ## Publishing
 
-`.github/workflows/pages.yml` publishes to GitHub Pages on every push to `main`: it AOT-compiles the
-client, points `<base href>` at the repo's sub-path, and copies `index.html` to `404.html` so links
+`.github/workflows/pages.yml` publishes to GitHub Pages when run by hand (Actions → Deploy to GitHub
+Pages → Run workflow, or `gh workflow run pages.yml`); pushes don't publish. It AOT-compiles the client, points `<base href>` at the repo's sub-path, and copies `index.html` to `404.html` so links
 into the app (`/world/...`) still load.
 
 To try a published build locally:

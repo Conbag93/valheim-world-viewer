@@ -1,0 +1,106 @@
+@using ValheimDiagrams.Client.Diagrams
+@using ValheimDiagrams.Client.Services
+@using ValheimDiagrams.Core
+@implements IDisposable
+@inject WorldStore Store
+
+@* Biome map tiles under the shapes, drawn in the browser from the world's seed. Only tiles with
+   explored ground exist; the rest stays blank. A coarse layer is always drawn underneath, so
+   changing zoom never flashes empty while finer tiles are still being drawn. *@
+<g class="terrain" opacity="@F(Opacity)" pointer-events="none">
+    @foreach (var level in Levels)
+    {
+        var size = TerrainRenderer.TileMetres(level);
+        // Each tile overlaps the next by one of its pixels, hiding anti-aliased seams between them.
+        var overlap = Math.Pow(2, level);
+        foreach (var (tx, ty) in Visible(level))
+        {
+            if (!_urls.TryGetValue((level, tx, ty), out var url) || url is null) continue;
+            <image @key="(level, tx, ty)" href="@url"
+                   x="@F(tx * size)" y="@F(-(ty + 1) * size)" width="@F(size + overlap)" height="@F(size + overlap)"
+                   preserveAspectRatio="none" />
+        }
+    }
+</g>
+
+@code {
+    [Parameter, EditorRequired] public string WorldName { get; set; } = "";
+    [Parameter, EditorRequired] public Bounds View { get; set; }
+    [Parameter, EditorRequired] public double Scale { get; set; }
+    [Parameter] public double Opacity { get; set; } = 0.7;
+
+    const int BackdropLevel = 5;
+
+    readonly Dictionary<(int Level, int X, int Y), string?> _urls = [];
+    readonly CancellationTokenSource _stop = new();
+    string _world = "";
+    bool _drawing;
+
+    // The backdrop, then the level whose pixels are about one screen pixel (never finer than 1 m).
+    IEnumerable<int> Levels
+    {
+        get
+        {
+            var detail = Math.Clamp((int)Math.Floor(Math.Log2(1 / Scale)), 0, TerrainRenderer.MaxLevel);
+            yield return Math.Max(detail, BackdropLevel);
+            if (detail < BackdropLevel) yield return detail;
+        }
+    }
+
+    IEnumerable<(int X, int Y)> Visible(int level)
+    {
+        var tiles = Store.TerrainIndex(WorldName, level);
+        var size = TerrainRenderer.TileMetres(level);
+        int x0 = (int)Math.Floor(View.MinX / size), x1 = (int)Math.Floor(View.MaxX / size);
+        int y0 = (int)Math.Floor(View.MinY / size), y1 = (int)Math.Floor(View.MaxY / size);
+        // Few tiles are visible at once; walk the screen's tiles when that's cheaper than the index.
+        if ((long)(x1 - x0 + 1) * (y1 - y0 + 1) < tiles.Count)
+        {
+            for (var x = x0; x <= x1; x++)
+            for (var y = y0; y <= y1; y++)
+                if (tiles.Contains((x, y))) yield return (x, y);
+        }
+        else
+        {
+            foreach (var t in tiles)
+                if (t.X >= x0 && t.X <= x1 && t.Y >= y0 && t.Y <= y1) yield return t;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_world != WorldName)
+        {
+            _world = WorldName;
+            _urls.Clear();
+        }
+        if (!_drawing) _ = DrawMissing();
+    }
+
+    // Draws visible tiles that aren't ready yet, one at a time, letting the page repaint between them.
+    // Re-reads what's visible after each tile, so panning away stops work on tiles no longer needed.
+    async Task DrawMissing()
+    {
+        _drawing = true;
+        try
+        {
+            while (!_stop.IsCancellationRequested)
+            {
+                var next = Levels.SelectMany(l => Visible(l).Select(t => (l, t.X, t.Y))).Cast<(int, int, int)?>()
+                    .FirstOrDefault(k => !_urls.ContainsKey(k!.Value));
+                if (next is not { } key) break;
+                _urls[key] = await Store.TileUrlAsync(WorldName, key.Item1, key.Item2, key.Item3);
+                StateHasChanged();
+                await Task.Delay(1);
+            }
+        }
+        finally
+        {
+            _drawing = false;
+        }
+    }
+
+    public void Dispose() => _stop.Cancel();
+
+    static string F(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+}

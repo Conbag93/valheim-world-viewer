@@ -1,0 +1,76 @@
+@using ValheimDiagrams.Shared
+@using ValheimDiagrams.Client.Diagrams
+
+@if (ByElevation)
+{
+    @* One pass in height order, so the highest piece wins whatever its layer (as in Minutor).
+       The height cut itself is applied in diagram-canvas.js, so moving it doesn't re-render. *@
+    <g class="layer">
+        @foreach (var (e, layer) in _byElevation)
+        {
+            @Shapes.Render(e, layer.LegendColor, opacity: LayerOpacity(layer))
+        }
+    </g>
+}
+else
+{
+    foreach (var layer in VisibleLayers)
+    {
+        <g class="layer" opacity="@LayerOpacity(layer)">
+            @foreach (var e in layer.Elements)
+            {
+                if (e.Kind == ElementKind.Label) continue;
+                @Shapes.Render(e, layer.LegendColor)
+            }
+        </g>
+    }
+}
+@* Labels go on top of every layer so walls never cover them. *@
+@foreach (var layer in VisibleLayers)
+{
+    <g class="layer" opacity="@LayerOpacity(layer)">
+        @foreach (var e in layer.Elements)
+        {
+            if (e.Kind != ElementKind.Label) continue;
+            @Shapes.Render(e)
+        }
+    </g>
+}
+
+@code {
+    [Parameter, EditorRequired] public DiagramDto Diagram { get; set; } = default!;
+    [Parameter] public IReadOnlySet<int> HiddenLayers { get; set; } = new HashSet<int>();
+    [Parameter] public int? HighlightLayer { get; set; }
+    [Parameter] public bool ByElevation { get; set; }
+
+    IEnumerable<LayerDto> VisibleLayers => Diagram.Layers.Where(l => !HiddenLayers.Contains(l.Id));
+
+    string? LayerOpacity(LayerDto l) => HighlightLayer is { } h && h != l.Id ? "0.15" : null;
+
+    // Non-label shapes of the visible layers, lowest first; shapes without an elevation go last.
+    List<(ElementDto Element, LayerDto Layer)> _byElevation = [];
+
+    // The canvas re-renders on every pan and zoom step; the shapes only need to when what's drawn changes.
+    DiagramDto? _drawnDiagram;
+    IReadOnlySet<int>? _drawnHidden;
+    int? _drawnHighlight;
+    bool _drawnByElevation;
+    bool _dirty = true;
+
+    protected override void OnParametersSet()
+    {
+        var shapesChanged = !ReferenceEquals(_drawnDiagram, Diagram) || !ReferenceEquals(_drawnHidden, HiddenLayers);
+        _dirty = shapesChanged || _drawnHighlight != HighlightLayer || _drawnByElevation != ByElevation;
+        if (ByElevation && (shapesChanged || !_drawnByElevation))
+        {
+            _byElevation = VisibleLayers
+                .SelectMany(l => l.Elements.Where(e => e.Kind != ElementKind.Label).Select(e => (e, l)))
+                .OrderBy(x => x.e.Elevation ?? double.MaxValue)
+                .ThenBy(x => x.l.SortOrder)
+                .ToList();
+        }
+        (_drawnDiagram, _drawnHidden, _drawnHighlight, _drawnByElevation) = (Diagram, HiddenLayers, HighlightLayer, ByElevation);
+    }
+
+    protected override bool ShouldRender() => _dirty;
+}

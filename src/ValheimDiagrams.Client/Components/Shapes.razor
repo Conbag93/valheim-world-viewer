@@ -1,0 +1,66 @@
+@using ValheimDiagrams.Shared
+@using static ValheimDiagrams.Client.Diagrams.Geometry
+
+@code {
+    // Shapes are plain markup rather than one component each: with thousands of pieces, per-shape
+    // components made every canvas render walk thousands of parameter checks. Pointer events are
+    // delegated in diagram-canvas.js, which finds the shape through data-id.
+    // opacity applies to the whole shape. data-y carries the elevation for height slicing,
+    // which diagram-canvas.js applies (see Slice) without re-rendering.
+    public static RenderFragment Render(ElementDto e, string? hatchColour = null, bool outline = false, string? opacity = null) =>
+        @<g class="@(outline ? "sel-outline" : "el")" data-id="@(outline ? null : e.Id)"
+            data-y="@(outline || e.Elevation is null ? null : Svg(e.Elevation.Value))" opacity="@opacity">
+            @switch (e.Kind)
+            {
+                case ElementKind.Rect:
+                    <rect x="@Svg(P0(e).X)" y="@Svg(-(P0(e).Y + e.Height))" width="@Svg(e.Width)" height="@Svg(e.Height)"
+                          rx="@CornerRadius(e)" fill="@Fill(e, outline)" fill-opacity="@FillOpacity(e, outline)"
+                          stroke="@Stroke(e, outline)" stroke-width="@StrokeWidth(e, outline)" stroke-dasharray="@Dash(e, outline)" />
+                    break;
+                case ElementKind.Polygon:
+                    <polygon points="@SvgPoints(e.Points)" fill="@Fill(e, outline)" fill-opacity="@FillOpacity(e, outline)"
+                             stroke="@Stroke(e, outline)" stroke-width="@StrokeWidth(e, outline)" stroke-dasharray="@Dash(e, outline)" stroke-linejoin="round" />
+                    @if (e.Style.Hatch && !outline && hatchColour is not null)
+                    {
+                        <polygon points="@SvgPoints(e.Points)" fill="url(#@HatchId(hatchColour))" opacity="0.5" pointer-events="none" />
+                    }
+                    break;
+                case ElementKind.Polyline:
+                    <polyline points="@SvgPoints(e.Points)" fill="none"
+                              stroke="@Stroke(e, outline)" stroke-width="@StrokeWidth(e, outline)" stroke-dasharray="@Dash(e, outline)"
+                              stroke-linecap="@(e.Style.RoundCaps ? "round" : null)" stroke-linejoin="round"
+                              marker-end="@(e.Style.ArrowEnd && !outline ? "url(#arrow)" : null)" />
+                    break;
+                case ElementKind.Circle:
+                    <circle cx="@Svg(P0(e).X)" cy="@Svg(-P0(e).Y)" r="@Svg(e.Radius)" fill="@Fill(e, outline)" fill-opacity="@FillOpacity(e, outline)"
+                            stroke="@Stroke(e, outline)" stroke-width="@StrokeWidth(e, outline)" stroke-dasharray="@Dash(e, outline)" />
+                    break;
+                case ElementKind.Label:
+                    var (w, h, font) = PillSize(e);
+                    <rect class="pill" x="@Svg(P0(e).X - w / 2)" y="@Svg(-P0(e).Y - h / 2)" width="@Svg(w)" height="@Svg(h)" rx="@CornerRadius(e)"
+                          fill="@(outline ? "none" : null)" stroke="@Stroke(e, outline)" stroke-width="@StrokeWidth(e, outline)" />
+                    @if (!outline)
+                    {
+                        @* Wrapped in <g>: a bare <text> inside a code block is Razor's own tag. *@
+                        <g>
+                            <text class="@(e.Style.Emphasis ? "label emph" : "label")" x="@Svg(P0(e).X)" y="@Svg(-P0(e).Y + 4.0 / 14)"
+                                  font-size="@Svg(font)" text-anchor="middle">@e.Text</text>
+                        </g>
+                    }
+                    break;
+            }
+        </g>;
+
+    public static string HatchId(string colour) => "hatch-" + colour.TrimStart('#');
+
+    static Point2 P0(ElementDto e) => e.Points.Count > 0 ? e.Points[0] : default;
+
+    // In outline mode the shape is redrawn on top as a selection highlight.
+    static string Fill(ElementDto e, bool outline) => outline ? "none" : e.Style.Fill ?? "none";
+    static string? FillOpacity(ElementDto e, bool outline) => outline || e.Style.FillOpacity >= 1 ? null : Svg(e.Style.FillOpacity);
+    static string Stroke(ElementDto e, bool outline) => outline ? "var(--select)" : e.Style.StrokeWidth > 0 ? e.Style.Stroke ?? "none" : "none";
+    static string? StrokeWidth(ElementDto e, bool outline) =>
+        outline ? Svg(Math.Max(e.Style.StrokeWidth, 0.06) + 0.08) : e.Style.StrokeWidth > 0 ? Svg(e.Style.StrokeWidth) : null;
+    static string? Dash(ElementDto e, bool outline) => outline ? null : e.Style.Dash;
+    static string? CornerRadius(ElementDto e) => e.Style.CornerRadius > 0 ? Svg(e.Style.CornerRadius) : null;
+}

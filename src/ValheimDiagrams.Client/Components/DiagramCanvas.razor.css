@@ -1,0 +1,107 @@
+.canvas-wrap {
+    position: relative;
+    min-height: 0;
+    height: 100%;
+    background: var(--canvas-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+}
+
+.canvas.dragging {
+    cursor: grabbing;
+}
+
+.canvas ::deep .grid-minor {
+    stroke: var(--grid-minor);
+    stroke-width: 0.02;
+}
+
+.canvas ::deep .grid-major {
+    stroke: var(--grid-major);
+    stroke-width: 0.04;
+}
+
+.canvas ::deep .el {
+    cursor: pointer;
+}
+
+.canvas ::deep .el:hover {
+    filter: brightness(1.3);
+}
+
+.canvas ::deep .sel-outline {
+    pointer-events: none;
+}
+
+.canvas ::deep .pill {
+    fill: var(--pill-bg);
+}
+
+.canvas ::deep .label {
+    fill: var(--text-secondary);
+    pointer-events: none;
+}
+
+.canvas ::deep .label.emph {
+    fill: var(--text-primary);
+    font-weight: 500;
+}
+
+.canvas ::deep .compass {
+    fill: var(--text-primary);
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.toolbar {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.toolbar button, .toolbar label {
+    background: var(--panel-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.toolbar button:hover {
+    border-color: var(--select);
+}
+
+.readout {
+    position: absolute;
+    bottom: 8px;
+    left: 10px;
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    background: var(--panel-bg);
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.readout span:empty {
+    display: none;
+}

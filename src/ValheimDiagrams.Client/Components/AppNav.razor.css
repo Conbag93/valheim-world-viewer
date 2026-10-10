@@ -1,0 +1,24 @@
+.app-nav {
+    display: flex;
+    gap: 4px;
+    font-size: 13px;
+}
+
+.app-nav ::deep a {
+    border: 1px solid transparent;
+    padding: 4px 10px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+
+.app-nav ::deep a:hover {
+    background: var(--hover-bg);
+}
+
+.app-nav ::deep a.active {
+    background: var(--pill-bg);
+    color: var(--text-primary);
+    font-weight: 600;
+    border-color: var(--border);
+}

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Ahead-of-time compile to WebAssembly on publish (needs the wasm-tools workload).
+         About 3x faster than the interpreter here, at the cost of a larger download and a slower publish.
+         dotnet watch / dotnet build never AOT-compile. -->
+    <RunAOTCompilation>true</RunAOTCompilation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.11" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ValheimDiagrams.Shared\ValheimDiagrams.Shared.csproj" />
+    <ProjectReference Include="..\ValheimDiagrams.Core\ValheimDiagrams.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,236 @@
+.page {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 16px;
+    gap: 12px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+header p {
+    margin: 4px 0 0;
+    max-width: 80ch;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+select {
+    font: inherit;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-bg);
+    color: var(--text-primary);
+}
+
+main {
+    flex: 1;
+    min-height: 0;
+}
+
+.status {
+    color: var(--text-secondary);
+}
+
+.status.error {
+    color: #d03b3b;
+}
+
+@media (max-width: 800px) {
+    .page {
+        height: auto;
+    }
+}
+
+.actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+button {
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+    background: var(--hover-bg);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.slice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    font-size: 13px;
+}
+
+.slice input[type=range] {
+    flex: 1 1 260px;
+    max-width: 520px;
+    accent-color: var(--select);
+}
+
+.slice .value {
+    min-width: 7ch;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.slice .check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.slice .hint {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.status {
+    color: var(--text-secondary);
+}
+
+.status.error {
+    color: #d03b3b;
+}
+
+@media (max-width: 800px) {
+    .page {
+        height: auto;
+    }
+}
+
+.actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+button {
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+    background: var(--hover-bg);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.levels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.levels button span {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+.levels button.on {
+    border-color: var(--select);
+    box-shadow: inset 0 0 0 1px var(--select);
+    font-weight: 600;
+}
+
+.status {
+    margin: 0;
+    font-size: 13px;
+}
+
+.empty {
+    max-width: 70ch;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+code {
+    font-size: 12px;
+}
+
+.save-view {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.save-view input {
+    font: inherit;
+    margin-left: 6px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-bg);
+    color: var(--text-primary);
+}
+
+button.danger {
+    color: #d03b3b;
+}
+
+.warn {
+    color: #b8620b;
+}
+
+h1 .sub {
+    margin-left: 8px;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+main ::deep button.primary {
+    width: 100%;
+    background: var(--select);
+    border-color: var(--select);
+    color: #fff;
+    font-weight: 600;
+}
+
+.actions .check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}

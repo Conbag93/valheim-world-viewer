@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ValheimDiagrams.Client/ValheimDiagrams.Client.csproj" />
+    <Project Path="src/ValheimDiagrams.Core/ValheimDiagrams.Core.csproj" />
+    <Project Path="src/ValheimDiagrams.Shared/ValheimDiagrams.Shared.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,209 @@
+@using ValheimDiagrams.Shared
+@using ValheimDiagrams.Client.Diagrams
+@using static ValheimDiagrams.Client.Diagrams.Geometry
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="canvas-wrap">
+    @* Pointer input is wired up in diagram-canvas.js; see OnPan, OnZoom, OnShapeHover and OnShapeClick. *@
+    <svg @ref="_svg" class="canvas" viewBox="@_view.ViewBox" role="img" aria-label="@Diagram.Name">
+        <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </marker>
+            @foreach (var colour in _hatchColours)
+            {
+                <pattern id="@Shapes.HatchId(colour)" width="@Svg(6.0 / 14)" height="@Svg(6.0 / 14)" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                    <line x1="0" y1="0" x2="0" y2="@Svg(6.0 / 14)" stroke="@colour" stroke-width="@Svg(1.5 / 14)" />
+                </pattern>
+            }
+            <pattern id="grid-minor" width="@Svg(Diagram.GridSize)" height="@Svg(Diagram.GridSize)" patternUnits="userSpaceOnUse">
+                <path d="M @Svg(Diagram.GridSize) 0 L 0 0 0 @Svg(Diagram.GridSize)" fill="none" class="grid-minor" />
+            </pattern>
+            <pattern id="grid-major" width="@Svg(Diagram.GridSize * 2)" height="@Svg(Diagram.GridSize * 2)" patternUnits="userSpaceOnUse">
+                <rect width="@Svg(Diagram.GridSize * 2)" height="@Svg(Diagram.GridSize * 2)" fill="url(#grid-minor)" />
+                <path d="M @Svg(Diagram.GridSize * 2) 0 L 0 0 0 @Svg(Diagram.GridSize * 2)" fill="none" class="grid-major" />
+            </pattern>
+        </defs>
+
+        @* Drawn first, under the grid and shapes: e.g. a terrain map. *@
+        @Underlay?.Invoke(new ViewInfo(VisibleArea, _view.Scale))
+
+        @{ var area = _content.Inflate(500); }
+        @* Shifting the background's user space moves where the grid pattern's lines fall. *@
+        @{ var (gx, gy) = (Diagram.GridOffset?.X ?? 0, -(Diagram.GridOffset?.Y ?? 0)); }
+        <rect class="bg" transform="@(gx == 0 && gy == 0 ? null : $"translate({Svg(gx)} {Svg(gy)})")"
+              x="@Svg(area.MinX - gx)" y="@Svg(-area.MaxY - gy)" width="@Svg(area.Width)" height="@Svg(area.Height)"
+              fill="@(_showGrid && _view.Scale >= MinGridScale ? "url(#grid-major)" : "transparent")" />
+
+        <ShapeLayer Diagram="Diagram" HiddenLayers="HiddenLayers" HighlightLayer="HighlightLayer" ByElevation="Slice is not null" />
+
+        @if (Selected is not null)
+        {
+            @Shapes.Render(Selected, outline: true)
+        }
+
+        @{ var c = _content.Centre; var f = 1.1; }
+        <g class="compass" font-size="@Svg(f)">
+            <text x="@Svg(c.X)" y="@Svg(-_content.MaxY - 1.2)" text-anchor="middle">N</text>
+            <text x="@Svg(c.X)" y="@Svg(-_content.MinY + 1.2 + f)" text-anchor="middle">S</text>
+            <text x="@Svg(_content.MaxX + 1.4)" y="@Svg(-c.Y + f / 3)" text-anchor="middle">E</text>
+            <text x="@Svg(_content.MinX - 1.4)" y="@Svg(-c.Y + f / 3)" text-anchor="middle">W</text>
+        </g>
+    </svg>
+
+    <div class="toolbar">
+        <button title="Zoom in" @onclick="() => _view.ZoomCentre(1.25)">+</button>
+        <button title="Zoom out" @onclick="() => _view.ZoomCentre(0.8)">−</button>
+        <button title="Fit to diagram" @onclick="Fit">Fit</button>
+        <label><input type="checkbox" @bind="_showGrid" /> Grid</label>
+    </div>
+    <div class="readout">
+        @* Filled in by diagram-canvas.js as the pointer moves. *@
+        <span @ref="_cursorReadout"></span>
+        <span>@(_view.Scale >= 1 ? $"{_view.Scale:0} px/m" : $"{1 / _view.Scale:0} m/px")</span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DiagramDto Diagram { get; set; } = default!;
+    [Parameter] public IReadOnlySet<int> HiddenLayers { get; set; } = new HashSet<int>();
+    [Parameter] public int? HighlightLayer { get; set; }
+    [Parameter] public ElementDto? Selected { get; set; }
+    [Parameter] public EventCallback<ElementDto?> SelectedChanged { get; set; }
+    [Parameter] public EventCallback<ElementDto?> OnHover { get; set; }
+
+    // When set, the view only re-fits when this changes, so swapping between related diagrams
+    // (e.g. floor levels of one build) keeps the current pan and zoom.
+    [Parameter] public object? FitKey { get; set; }
+
+    // Optional height cut for 3D builds, and a request to move it: +1 up / -1 down a step
+    // (Shift+wheel), or +2 / -2 for a whole storey ([ and ]).
+    [Parameter] public Slice? Slice { get; set; }
+    [Parameter] public EventCallback<int> OnDepthStep { get; set; }
+
+    // Content under everything else, given the current view (re-rendered on every pan and zoom).
+    [Parameter] public RenderFragment<ViewInfo>? Underlay { get; set; }
+
+    ElementReference _svg;
+    ElementReference _cursorReadout;
+    IJSInProcessObjectReference? _module;
+    DotNetObjectReference<DiagramCanvas>? _self;
+
+    readonly Viewport _view = new();
+    DiagramDto? _fittedTo;
+    object? _fitKey;
+    Bounds _content;
+    string[] _hatchColours = [];
+    bool _showGrid = true;
+
+    // Below this the metre grid is a grey wash, and costly to draw, so it's left out.
+    const double MinGridScale = 3;
+    Dictionary<int, ElementDto> _byId = [];
+
+    // The part of the diagram currently on screen, in diagram coordinates (X east, Y north).
+    public Bounds VisibleArea
+    {
+        get
+        {
+            var (x0, y0) = _view.ToWorld(0, 0);
+            var (x1, y1) = _view.ToWorld(_view.Width, _view.Height);
+            return new Bounds(Math.Min(x0, x1), Math.Min(y0, y1), Math.Max(x0, x1), Math.Max(y0, y1));
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_fittedTo, Diagram)) return;
+        var all = Diagram.Layers.SelectMany(l => l.Elements).ToList();
+        _content = all.Count > 0 ? BoundsOf(all) : new Bounds(0, 0, 10, 10);
+        _byId = all.DistinctBy(e => e.Id).ToDictionary(e => e.Id);
+        _hatchColours = Diagram.Layers.Where(l => l.Elements.Any(e => e.Style.Hatch)).Select(l => l.LegendColor).Distinct().ToArray();
+        var key = FitKey ?? Diagram;
+        if (_module is not null && !Equals(key, _fitKey)) Fit();
+        _fittedTo = Diagram;
+        _fitKey = key;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            ApplySlice();
+            return;
+        }
+        _module = await JS.InvokeAsync<IJSInProcessObjectReference>("import", "./js/diagram-canvas.js");
+        _self = DotNetObjectReference.Create(this);
+        var size = _module.Invoke<double[]>("init", _svg, _self, _cursorReadout);
+        _view.Resize(size[0], size[1]);
+        Fit();
+        StateHasChanged();
+    }
+
+    // The height cut is applied to the drawn shapes in JS, so moving it never re-renders them.
+    // Re-apply whenever the cut changes or ShapeLayer may have redrawn (diagram or layers changed).
+    Slice? _appliedSlice;
+    DiagramDto? _appliedDiagram;
+    IReadOnlySet<int>? _appliedHidden;
+
+    void ApplySlice()
+    {
+        if (_module is null) return;
+        if (Slice == _appliedSlice && ReferenceEquals(Diagram, _appliedDiagram) && ReferenceEquals(HiddenLayers, _appliedHidden)) return;
+        if (Slice is { } s)
+            _module.InvokeVoid("applySlice", _svg, s.Ceiling, s.Floor, s.ShadeFrom, Slice.ShadeDepth, Slice.MaxShade);
+        else if (_appliedSlice is not null)
+            _module.InvokeVoid("applySlice", _svg, null, null, null, 0, 0);
+        (_appliedSlice, _appliedDiagram, _appliedHidden) = (Slice, Diagram, HiddenLayers);
+    }
+
+    [JSInvokable]
+    public void OnResize(double width, double height)
+    {
+        _view.Resize(width, height);
+        StateHasChanged();
+    }
+
+    // Leave room around the content for the compass letters.
+    void Fit() => _view.Fit(_content.Inflate(2.5));
+
+    [JSInvokable]
+    public void OnPan(double dx, double dy)
+    {
+        _view.PanBy(dx, dy);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnDepth(int step) => _ = OnDepthStep.InvokeAsync(step);
+
+    [JSInvokable]
+    public void OnZoom(double offsetX, double offsetY, double factor)
+    {
+        _view.ZoomAt(offsetX, offsetY, factor);
+        StateHasChanged();
+    }
+
+    // Called synchronously from JS, so these return void and let the callbacks run on.
+    [JSInvokable]
+    public void OnShapeHover(int? id) => _ = OnHover.InvokeAsync(Find(id));
+
+    [JSInvokable]
+    public void OnShapeClick(int? id) => _ = SelectedChanged.InvokeAsync(Find(id));
+
+    ElementDto? Find(int? id) => id is { } i ? _byId.GetValueOrDefault(i) : null;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try
+            {
+                _module.InvokeVoid("dispose", _svg);
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+        }
+        _self?.Dispose();
+    }
+}

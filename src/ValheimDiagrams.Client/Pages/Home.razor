@@ -1,0 +1,141 @@
+@page "/"
+@using ValheimDiagrams.Shared
+@using ValheimDiagrams.Core
+@using ValheimDiagrams.Client.Services
+@inject WorldStore Store
+@inject NavigationManager Nav
+
+<PageTitle>Valheim world viewer</PageTitle>
+
+<div class="home">
+    <header>
+        <h1>Valheim world viewer</h1>
+        <p>See everything built in a Valheim world from above, storey by storey, over a map of the biomes you've explored.</p>
+        <p class="privacy">Your save is read in this browser and stays here: nothing is uploaded.</p>
+    </header>
+
+    @if (_message is not null)
+    {
+        <p class="status @(_failed ? "error" : null)" role="status">@_message</p>
+    }
+
+    @if (_worlds.Count > 0)
+    {
+        <section>
+            <h2>Your worlds</h2>
+            <ul class="worlds">
+                @foreach (var w in _worlds)
+                {
+                    <li>
+                        <a class="world" href="world/@Uri.EscapeDataString(w.WorldName)">
+                            <span class="name">@w.WorldName</span>
+                            <span class="meta">
+                                @w.PieceCount.ToString("N0") player-built pieces
+                                @if (!string.IsNullOrEmpty(w.SeedName)) { <text> · seed <code>@w.SeedName</code></text> }
+                            </span>
+                            <span class="meta">Saved @Local(w.SavedUtc) · imported @Local(w.ImportedUtc)</span>
+                        </a>
+                        <div class="world-actions">
+                            <button class="quiet" disabled="@_busy" @onclick="() => Remove(w)">Remove</button>
+                        </div>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+
+    <section class="open">
+        <h2>@(_worlds.Count == 0 ? "Open a world" : "Open another world")</h2>
+
+        <div class="upload">
+            <label class="picker @(_busy ? "busy" : null)">
+                <InputFile OnChange="Import" multiple webkitdirectory disabled="@_busy" />
+                <span>@(_progress is { } p ? $"{p.Step}… {(p.Total > 0 ? 100 * p.Done / p.Total : 0)}%" : "Choose a world folder…")</span>
+            </label>
+            <p class="hint">
+                Pick the folder named after the world. It's inside <code>worlds_local</code> and holds <code>.chunk</code> files and <code>_main.*</code> files.
+                Only Valheim 1.0 saves can be read. To import a newer save of the same world, pick its folder again.
+            </p>
+            <dl class="where">
+                <dt>Windows</dt><dd><code>%USERPROFILE%\AppData\LocalLow\IronGate\Valheim\worlds_local</code> (paste it into the picker's address bar)</dd>
+                <dt>Linux / Steam Deck</dt><dd><code>~/.config/unity3d/IronGate/Valheim/worlds_local</code></dd>
+                <dt>macOS</dt><dd><code>~/Library/Application Support/IronGate/Valheim/worlds_local</code></dd>
+                <dt>Dedicated server</dt><dd>its <code>worlds_local</code> folder; copy the world's folder to your computer first</dd>
+            </dl>
+        </div>
+    </section>
+</div>
+
+@code {
+    IReadOnlyList<WorldDto> _worlds = [];
+    bool _busy;
+    LoadProgress? _progress;
+    string? _message;
+    bool _failed;
+
+    protected override async Task OnInitializedAsync() => await Refresh();
+
+    async Task Refresh()
+    {
+        try
+        {
+            _worlds = await Store.ListAsync();
+        }
+        catch (Exception ex)
+        {
+            Fail($"Couldn't open the browser's storage: {ex.Message}");
+        }
+    }
+
+    async Task Import(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(maximumFileCount: 20_000);
+        if (!files.Any(f => f.Name.StartsWith("_main.", StringComparison.Ordinal) && f.Name.EndsWith(".fwl2", StringComparison.Ordinal)))
+        {
+            Fail("That folder doesn't look like a Valheim 1.0 world: there's no _main.*.fwl2 file in it. Pick the folder named after the world.");
+            return;
+        }
+        _busy = true;
+        _message = null;
+        try
+        {
+            var progress = new Progress<LoadProgress>(p => { _progress = p; StateHasChanged(); });
+            var r = await Store.ImportAsync(files, progress);
+            Nav.NavigateTo($"world/{Uri.EscapeDataString(r.WorldName)}");
+        }
+        catch (Exception ex)
+        {
+            Fail(ex.Message);
+            await Refresh();
+        }
+        finally
+        {
+            _busy = false;
+            _progress = null;
+        }
+    }
+
+    async Task Remove(WorldDto w)
+    {
+        _busy = true;
+        try
+        {
+            await Store.DeleteWorldAsync(w.WorldName);
+            _failed = false;
+            _message = $"Removed {w.WorldName} from this browser, with its saved views. The save itself wasn't touched.";
+        }
+        catch (Exception ex)
+        {
+            Fail(ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+        await Refresh();
+    }
+
+    void Fail(string message) => (_failed, _message) = (true, message);
+
+    static string Local(DateTime utc) => utc == default ? "unknown" : DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime().ToString("d MMM yyyy HH:mm");
+}

@@ -1,0 +1,183 @@
+@using ValheimDiagrams.Shared
+@using ValheimDiagrams.Client.Diagrams
+
+<div class="viewer">
+    <DiagramCanvas @ref="_canvas" Diagram="Diagram" FitKey="FitKey" Slice="Slice" OnDepthStep="OnDepthStep" Underlay="Underlay" HiddenLayers="_hidden" HighlightLayer="_highlight"
+                   @bind-Selected="_selected" OnHover="e => _hovered = e" />
+
+    <aside class="sidebar">
+        <section>
+            <h3>Layers</h3>
+            <ul class="layers">
+                @foreach (var layer in Diagram.Layers)
+                {
+                    <li @onmouseenter="() => _highlight = layer.Id" @onmouseleave="() => _highlight = null"
+                        class="@(_hidden.Contains(layer.Id) ? "off" : null)">
+                        <label>
+                            <input type="checkbox" checked="@(!_hidden.Contains(layer.Id))" @onchange="() => Toggle(layer.Id)" />
+                            <span class="swatch @layer.LegendSwatch.ToString().ToLowerInvariant()" style="--c: @layer.LegendColor"></span>
+                            <span class="name">@layer.Name</span>
+                            <span class="count">@layer.Elements.Count(InSlice)</span>
+                        </label>
+                    </li>
+                }
+            </ul>
+        </section>
+
+        <section class="details">
+            <h3>@(_hovered is not null ? "Hover" : "Selection")</h3>
+            @if ((_hovered ?? _selected) is { } e)
+            {
+                <dl>
+                    <dt>Layer</dt><dd>@LayerName(e)</dd>
+                    @if (e.Note is not null) { <dt>Note</dt><dd>@e.Note</dd> }
+                    @if (e.Text is not null) { <dt>Text</dt><dd>@e.Text</dd> }
+                    @if (PieceOf(e) is { } piece)
+                    {
+                        <dt>Piece</dt><dd>@piece.DisplayName <code>@piece.PrefabName</code></dd>
+                    }
+                    @foreach (var (k, v) in Measurements(e))
+                    {
+                        <dt>@k</dt><dd>@v</dd>
+                    }
+                </dl>
+                @if (SelectionActions is not null && _selected is not null && ReferenceEquals(e, _selected))
+                {
+                    <div class="actions">@SelectionActions(_selected)</div>
+                }
+            }
+            else
+            {
+                <p class="hint">Hover or click a shape. Drag to pan, scroll to zoom.</p>
+            }
+        </section>
+
+        @if (Diagram.Pieces.Count > 0)
+        {
+            <section>
+                <h3>Pieces (visible layers@(Slice is null ? "" : ", below the ceiling"))</h3>
+                @if (PieceCounts() is { Count: > 0 } counts)
+                {
+                    <table class="pieces">
+                        @foreach (var (piece, n) in counts)
+                        {
+                            <tr><td>@piece.DisplayName</td><td class="n">× @n</td></tr>
+                        }
+                    </table>
+                }
+                else
+                {
+                    <p class="hint">No shapes are linked to build pieces.</p>
+                }
+            </section>
+        }
+    </aside>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DiagramDto Diagram { get; set; } = default!;
+
+    // Diagrams sharing a FitKey keep the view and layer toggles when swapped.
+    [Parameter] public object? FitKey { get; set; }
+
+    [Parameter] public Slice? Slice { get; set; }
+    [Parameter] public EventCallback<int> OnDepthStep { get; set; }
+
+    [Parameter] public RenderFragment<ViewInfo>? Underlay { get; set; }
+
+    // Shown under the details of the selected shape, e.g. a button to open it.
+    [Parameter] public RenderFragment<ElementDto>? SelectionActions { get; set; }
+
+    bool InSlice(ElementDto e) => Slice?.Contains(e) ?? true;
+
+    DiagramCanvas? _canvas;
+
+    // The part of the diagram on screen, for loading or saving what the reader is looking at.
+    public Bounds? VisibleArea => _canvas?.VisibleArea;
+    object? _loadedKey;
+
+    HashSet<int> _hidden = [];
+    int? _highlight;
+    ElementDto? _selected;
+    ElementDto? _hovered;
+    DiagramDto? _loaded;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_loaded, Diagram)) return;
+        // Same FitKey: keep the reader's toggles and apply defaults only to layers that are new.
+        var keep = FitKey is not null && Equals(FitKey, _loadedKey) && _loaded is not null;
+        var seen = keep ? _loaded!.Layers.Select(l => l.Id).ToHashSet() : [];
+        _hidden = Diagram.Layers
+            .Where(l => seen.Contains(l.Id) ? _hidden.Contains(l.Id) : !l.VisibleByDefault)
+            .Select(l => l.Id).ToHashSet();
+        _loaded = Diagram;
+        _loadedKey = FitKey;
+        _selected = _hovered = null;
+    }
+
+    void Toggle(int layerId)
+    {
+        // A new set instance tells the canvas its parameter changed.
+        _hidden = new HashSet<int>(_hidden);
+        if (!_hidden.Remove(layerId)) _hidden.Add(layerId);
+        if (_selected is not null && _hidden.Contains(_selected.LayerId)) _selected = null;
+    }
+
+    string LayerName(ElementDto e) => Diagram.Layers.FirstOrDefault(l => l.Id == e.LayerId)?.Name ?? "?";
+
+    PieceDto? PieceOf(ElementDto e) => e.PieceId is { } id ? Diagram.Pieces.FirstOrDefault(p => p.Id == id) : null;
+
+    // Hover re-renders the sidebar, so count only when the diagram or the hidden layers change.
+    DiagramDto? _countedDiagram;
+    HashSet<int>? _countedHidden;
+    Slice? _countedSlice;
+    List<(PieceDto Piece, int Count)> _counts = [];
+
+    List<(PieceDto Piece, int Count)> PieceCounts()
+    {
+        if (!ReferenceEquals(_countedDiagram, Diagram) || !ReferenceEquals(_countedHidden, _hidden) || _countedSlice != Slice)
+            (_counts, _countedDiagram, _countedHidden, _countedSlice) = (CountPieces(), Diagram, _hidden, Slice);
+        return _counts;
+    }
+
+    List<(PieceDto Piece, int Count)> CountPieces() =>
+        Diagram.Layers.Where(l => !_hidden.Contains(l.Id))
+            .SelectMany(l => l.Elements)
+            .Where(e => e.PieceId is not null && InSlice(e))
+            .GroupBy(e => e.PieceId!.Value)
+            .Select(g => (Diagram.Pieces.First(p => p.Id == g.Key), g.Count()))
+            .OrderByDescending(x => x.Item2)
+            .ToList();
+
+    static string M(double v) => $"{v:0.##} m";
+
+    static IEnumerable<(string, string)> Measurements(ElementDto e)
+    {
+        var p0 = e.Points.Count > 0 ? e.Points[0] : default;
+        switch (e.Kind)
+        {
+            case ElementKind.Rect:
+                yield return ("Size", $"{e.Width:0.##} × {e.Height:0.##} m");
+                yield return ("SW corner", $"{p0.X:0.##}, {p0.Y:0.##}");
+                break;
+            case ElementKind.Circle:
+                yield return ("Diameter", M(e.Radius * 2));
+                yield return ("Centre", $"{p0.X:0.##}, {p0.Y:0.##}");
+                break;
+            case ElementKind.Polygon:
+                var edges = Geometry.EdgeLengths(e).ToList();
+                var b = Geometry.BoundsOf(e);
+                yield return ("Sides", string.Join(", ", edges.Select(x => x.ToString("0.##"))) + " m");
+                yield return ("Perimeter", M(edges.Sum()));
+                yield return ("Overall", $"{b.Width:0.#} × {b.Height:0.#} m");
+                break;
+            case ElementKind.Polyline:
+                yield return ("Length", M(Geometry.EdgeLengths(e).Sum()));
+                break;
+            case ElementKind.Label:
+                yield return ("At", $"{p0.X:0.##}, {p0.Y:0.##}");
+                break;
+        }
+    }
+}

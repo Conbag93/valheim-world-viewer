@@ -1,0 +1,142 @@
+.viewer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 16px;
+    height: 100%;
+    min-height: 0;
+}
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+section {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+
+h3 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.layers {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.layers li {
+    border-radius: 6px;
+}
+
+.layers li:hover {
+    background: var(--hover-bg);
+}
+
+.layers li.off .name {
+    color: var(--text-muted);
+    text-decoration: line-through;
+}
+
+.layers label {
+    display: grid;
+    grid-template-columns: auto 18px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 5px 6px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.count, .n {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+}
+
+.swatch {
+    display: inline-block;
+    width: 16px;
+}
+
+.swatch.line {
+    border-top: 3px solid var(--c);
+}
+
+.swatch.fill {
+    height: 12px;
+    background: var(--c);
+    border: 0.5px solid #888780;
+    border-radius: 2px;
+}
+
+.swatch.hatch {
+    height: 12px;
+    background: repeating-linear-gradient(45deg, var(--c) 0 1.5px, transparent 1.5px 4px);
+    border: 0.5px solid var(--c);
+    border-radius: 2px;
+}
+
+dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    margin: 0;
+    font-size: 13px;
+}
+
+dt {
+    color: var(--text-secondary);
+}
+
+dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+code {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.hint {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.pieces {
+    width: 100%;
+    font-size: 13px;
+    border-collapse: collapse;
+}
+
+.pieces td {
+    padding: 3px 0;
+}
+
+.pieces .n {
+    text-align: right;
+}
+
+@media (max-width: 800px) {
+    .viewer {
+        grid-template-columns: 1fr;
+        grid-template-rows: 60vh auto;
+    }
+}
+
+.actions {
+    margin-top: 12px;
+}

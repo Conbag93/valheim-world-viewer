@@ -1,0 +1,64 @@
+# Builds the viewer (AOT-compiled WebAssembly) and publishes it to GitHub Pages.
+# It's a static site: saves are read in each visitor's browser, nothing is uploaded anywhere.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # Needed for the ahead-of-time compilation the client is set up for.
+      - run: dotnet workload install wasm-tools
+
+      - run: dotnet publish src/ValheimDiagrams.Client -c Release -o publish
+
+      - name: Adapt for GitHub Pages
+        working-directory: publish/wwwroot
+        run: |
+          # A project site lives under /<repo>/; a <user>.github.io repo is served from /.
+          repo="${GITHUB_REPOSITORY#*/}"
+          base="/$repo/"
+          [[ "$repo" == *.github.io ]] && base="/"
+          sed -i "s#<base href=\"/\" />#<base href=\"$base\" />#" index.html
+          grep -q "<base href=\"$base\" />" index.html
+          # The precompressed copies are of the old index.html.
+          rm -f index.html.br index.html.gz
+          # Pages serves 404.html for unknown paths, so deep links (/world/...) still boot the app.
+          cp index.html 404.html
+          # Keep Jekyll from hiding _framework.
+          touch .nojekyll
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: publish/wwwroot
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

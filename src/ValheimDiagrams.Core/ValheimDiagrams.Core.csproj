@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Everything about reading a Valheim save and making sense of it, with no server or storage:
+       runs the same in the browser (WebAssembly) and in a console. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ValheimDiagrams.Shared\ValheimDiagrams.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="World/prefab-names.txt" LogicalName="ValheimDiagrams.Core.prefab-names.txt" />
+    <EmbeddedResource Include="World/location-biomes.txt" LogicalName="ValheimDiagrams.Core.location-biomes.txt" />
+  </ItemGroup>
+
+</Project>

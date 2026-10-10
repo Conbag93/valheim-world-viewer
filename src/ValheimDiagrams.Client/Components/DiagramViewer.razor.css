@@ -150,10 +150,33 @@ code {
 @media (max-width: 800px) {
     .viewer {
         grid-template-columns: 1fr;
-        grid-template-rows: 60vh auto;
+        grid-template-rows: 55svh auto;
     }
 }
 
 .actions {
     margin-top: 12px;
+}
+
+.hint.touch {
+    display: none;
+}
+
+@media (pointer: coarse) {
+    .hint.touch {
+        display: block;
+    }
+
+    .hint.mouse {
+        display: none;
+    }
+
+    .layers label {
+        min-height: 40px;
+    }
+
+    .layers input {
+        width: 20px;
+        height: 20px;
+    }
 }

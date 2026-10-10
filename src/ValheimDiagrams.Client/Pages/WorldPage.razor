@@ -96,10 +96,10 @@
                 @foreach (var top in StoreyTops()) { <option value="@F(top)"></option> }
             </datalist>
             <span class="value">y @_ceiling.ToString("0.0") m</span>
-            <button title="Down a storey ( [ )" @onclick="() => Step(-2)">↓ Storey</button>
-            <button title="Up a storey ( ] )" @onclick="() => Step(2)">↑ Storey</button>
+            <button title="Down a storey ( [ )" aria-label="Down a storey" @onclick="() => Step(-2)">↓<span class="word"> Storey</span></button>
+            <button title="Up a storey ( ] )" aria-label="Up a storey" @onclick="() => Step(2)">↑<span class="word"> Storey</span></button>
             <label class="check"><input type="checkbox" @bind="_storeyOnly" /> This storey only</label>
-            <span class="hint">@StoreyLabel() · Shift+wheel ±0.5 m, [ ] storey</span>
+            <span class="hint">@StoreyLabel()<span class="keys"> · Shift+wheel ±0.5 m, [ ] storey</span></span>
         </div>
     }
 

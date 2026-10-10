@@ -109,3 +109,20 @@
 .canvas ::deep .terrain .fog {
     fill: var(--fog);
 }
+
+@media (pointer: coarse) {
+    .toolbar button, .toolbar label {
+        min-width: 40px;
+        min-height: 40px;
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .toolbar input {
+        width: 18px;
+        height: 18px;
+    }
+}

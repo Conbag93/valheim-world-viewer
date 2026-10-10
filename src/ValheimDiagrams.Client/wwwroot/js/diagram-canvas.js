@@ -2,13 +2,25 @@
 // something changes: a pan step, a zoom, a different shape under the pointer, or a click.
 // The cursor read-out is written straight to the DOM, so plain mouse movement costs no .NET work.
 // Height slicing follows Minutor: Shift+wheel moves the cut a step, [ and ] jump a storey.
+// On touch screens one finger pans and two fingers pinch to zoom.
 const canvases = new WeakMap();
 
 const DRAG_THRESHOLD = 4; // px of movement before a press becomes a pan rather than a click
 const ZOOM_STEP = 1.15;
 
 export function init(el, dotnet, readout) {
-    const s = { drag: null, moved: 0, hover: null };
+    const s = { drag: null, moved: 0, hover: null, pointers: new Map(), pinch: null };
+
+    // Distance and midpoint (relative to the canvas) of the first two touch points.
+    const pinchOf = () => {
+        const [a, b] = [...s.pointers.values()];
+        const r = el.getBoundingClientRect();
+        return {
+            dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+            x: (a.x + b.x) / 2 - r.left,
+            y: (a.y + b.y) / 2 - r.top,
+        };
+    };
 
     const shapeId = target => {
         const g = target.closest?.('[data-id]');
@@ -44,11 +56,30 @@ export function init(el, dotnet, readout) {
         },
         pointerdown: e => {
             if (e.button !== 0) return;
+            s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (s.pointers.size === 2) {
+                // A second finger turns the pan into a pinch; it never ends in a click.
+                for (const id of s.pointers.keys()) try { el.setPointerCapture(id); } catch { }
+                s.pinch = pinchOf();
+                s.drag = null;
+                s.moved = DRAG_THRESHOLD + 1;
+                setHover(null);
+                return;
+            }
+            if (s.pointers.size > 2) return;
             s.drag = { x: e.clientX, y: e.clientY, id: e.pointerId };
             s.moved = 0;
         },
         pointermove: e => {
             showCursor(e);
+            if (s.pointers.has(e.pointerId)) s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (s.pinch && s.pointers.size >= 2) {
+                const p = pinchOf(), was = s.pinch;
+                s.pinch = p;
+                if (p.x !== was.x || p.y !== was.y) dotnet.invokeMethod('OnPan', p.x - was.x, p.y - was.y);
+                if (p.dist !== was.dist) dotnet.invokeMethod('OnZoom', p.x, p.y, p.dist / was.dist);
+                return;
+            }
             if (!s.drag) return;
             const dx = e.clientX - s.drag.x, dy = e.clientY - s.drag.y;
             if (dx === 0 && dy === 0) return;
@@ -63,7 +94,16 @@ export function init(el, dotnet, readout) {
             s.drag.y = e.clientY;
             dotnet.invokeMethod('OnPan', dx, dy);
         },
-        pointerup: () => {
+        pointerup: e => {
+            s.pointers.delete(e.pointerId);
+            if (s.pinch) {
+                // Lifting one finger of a pinch carries on as a pan with the other.
+                s.pinch = null;
+                const [id, p] = [...s.pointers.entries()][0] ?? [];
+                s.drag = id === undefined ? null : { x: p.x, y: p.y, id };
+                if (!s.drag) el.classList.remove('dragging');
+                return;
+            }
             s.drag = null;
             el.classList.remove('dragging');
         },
